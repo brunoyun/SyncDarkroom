@@ -12,6 +12,15 @@
       "bundleIdentifier": "com.syncdarkroom.app",
       "versions": [
         {
+          "version": "0.3.0",
+          "buildVersion": "4",
+          "date": "2026-11-25T22:00:07Z",
+          "localizedDescription": "Map, statistics and cleanup\n\n- Map tab: see where your photos were taken, with groups and a heat map\n- Folder statistics\n- Find photos to delete: screenshots, photos of screens, duplicates, blurry shots\n- Rotate photos 90° from the viewer (lossless)\n- Replace the original with an edit\n- Pinch and twist to crop and straighten\n- Edited copies now sort at the date the photo was taken\n- New app icon",
+          "downloadURL": "https://github.com/brunoyun/SyncDarkroom/releases/download/v0.3.0/SyncDarkroom.ipa",
+          "size": 1869287,
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "0.2.0",
           "buildVersion": "3",
           "date": "2026-11-25T20:59:13Z",
