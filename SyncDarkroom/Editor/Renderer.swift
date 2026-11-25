@@ -37,6 +37,13 @@ enum Renderer {
            let overlay = MarkupRenderer.overlay(markup, extent: image.extent) {
             image = overlay.composited(over: image).cropped(to: image.extent)
         }
+        if geometry == .full, let turns = recipe.outputTurns, turns % 4 != 0 {
+            let size = image.extent.size
+            image = image.transformed(by: CGAffineTransform(rotationAngle: -CGFloat(turns % 4) * .pi / 2))
+                .normalizedOrigin()
+            let rotated = turns % 2 == 0 ? size : CGSize(width: size.height, height: size.width)
+            image = image.cropped(to: CGRect(origin: .zero, size: rotated.rounded()))
+        }
         return image
     }
 

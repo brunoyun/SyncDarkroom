@@ -68,6 +68,15 @@ enum SidecarStore {
         Set(all(in: folder).map(\.sidecar.source))
     }
 
+    /// Edited-copy file name → original file name, for every SyncDarkroom copy in `folder`.
+    static func copySources(in folder: URL) -> [String: String] {
+        var map: [String: String] = [:]
+        for entry in all(in: folder) {
+            if let output = entry.sidecar.output { map[output] = entry.sidecar.source }
+        }
+        return map
+    }
+
     private static func all(in folder: URL) -> [(url: URL, sidecar: Sidecar)] {
         let dir = directory(in: folder)
         let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
@@ -144,6 +153,12 @@ struct ExportJob: Sendable {
             .appendingPathExtension(format.fileExtension)
         defer { try? FileManager.default.removeItem(at: temp) }
 
+        try renderFile(to: temp)
+        return try finish(rendered: temp, output: output)
+    }
+
+    /// Renders the full-resolution result into `temp`.
+    func renderFile(to temp: URL) throws {
         var renderError: Error?
         let rendered: Bool? = ImageLoading.coordinatedRead(source) { readURL in
             do {
@@ -156,11 +171,18 @@ struct ExportJob: Sendable {
         }
         if let renderError { throw renderError }
         guard rendered == true else { throw ExportError.unreadable(source.lastPathComponent) }
+    }
 
+    private func finish(rendered temp: URL, output: URL) throws -> Sidecar {
         try coordinatedWrite(to: output) { target in
             let fm = FileManager.default
             if fm.fileExists(atPath: target.path) { try fm.removeItem(at: target) }
             try fm.copyItem(at: temp, to: target)
+        }
+
+        // Date the copy like its original so it sorts next to it (here and on synced devices).
+        if let date = try? source.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+            try? FileManager.default.setAttributes([.modificationDate: date], ofItemAtPath: output.path)
         }
 
         let folder = source.deletingLastPathComponent()
@@ -253,5 +275,63 @@ struct ExportJob: Sendable {
     private static func isTaken(_ url: URL) -> Bool {
         FileManager.default.fileExists(atPath: url.path)
             || FileManager.default.fileExists(atPath: SidecarStore.url(forCopy: url).path)
+    }
+}
+
+/// "Replace Original": the edit becomes the photo. Writes the rendered result under the
+/// original's name, deletes the original (and the edited copy being worked on), and drops
+/// recipes that pointed at the original, since its pixels are now the edited ones.
+struct ReplaceOriginalJob: Sendable {
+    let source: URL
+    let recipe: EditRecipe
+    let format: ExportFormat
+    let quality: Double
+    /// The edited copy that was open in the editor, deleted afterwards.
+    let editingCopy: URL?
+
+    /// Returns the URL of the photo that replaced the original.
+    func run() throws -> URL {
+        let fm = FileManager.default
+        let folder = source.deletingLastPathComponent()
+        let originalDate = (try? source.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        let temp = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension(format.fileExtension)
+        defer { try? fm.removeItem(at: temp) }
+
+        try ExportJob(source: source, recipe: recipe, format: format, quality: quality, updating: nil)
+            .renderFile(to: temp)
+
+        // Same name when the format matches (e.g. IMG_1.JPG stays IMG_1.JPG), else the new extension.
+        let sameFormat = ExportFormat.allCases.first {
+            $0.fileExtension == source.pathExtension.lowercased()
+                || ($0 == .jpeg && source.pathExtension.lowercased() == "jpeg")
+        } == format
+        var target = sameFormat ? source : source.deletingPathExtension().appendingPathExtension(format.fileExtension)
+        if target != source {
+            var n = 2
+            let base = source.deletingPathExtension().lastPathComponent
+            while fm.fileExists(atPath: target.path) {
+                target = folder.appendingPathComponent("\(base)-\(n).\(format.fileExtension)")
+                n += 1
+            }
+        }
+
+        try coordinatedWrite(to: target) { destination in
+            if fm.fileExists(atPath: destination.path) { try fm.removeItem(at: destination) }
+            try fm.copyItem(at: temp, to: destination)
+        }
+        if let originalDate {
+            try? fm.setAttributes([.modificationDate: originalDate], ofItemAtPath: target.path)
+        }
+        if target != source { try coordinatedDelete(source) }
+
+        // Recipes of this original no longer apply: drop them (their copies stay as plain files).
+        for (copyName, sourceName) in SidecarStore.copySources(in: folder) where sourceName == source.lastPathComponent {
+            SidecarStore.remove(forCopy: folder.appendingPathComponent(copyName))
+        }
+        if let editingCopy, editingCopy != target, fm.fileExists(atPath: editingCopy.path) {
+            try? coordinatedDelete(editingCopy)
+        }
+        return target
     }
 }

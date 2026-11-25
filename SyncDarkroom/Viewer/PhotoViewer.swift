@@ -18,6 +18,7 @@ struct PhotoViewer: View {
     @State private var items: [LibraryItem]
     @State private var confirmDelete = false
     @State private var deleteError: String?
+    @State private var rotating = false
     @AppStorage("viewerShowsInfo") private var showsInfo = false
 
     init(context: ViewerContext) {
@@ -74,6 +75,9 @@ struct PhotoViewer: View {
                         }
                         .keyboardShortcut("y", modifiers: .command)
                     }
+                    Button("Rotate 90° Clockwise", systemImage: "rotate.right") { rotateCurrent() }
+                        .disabled(current == nil || rotating)
+                        .keyboardShortcut("r", modifiers: .command)
                     Button("Edit", systemImage: "slider.horizontal.3") { editing = current }
                         .keyboardShortcut("e", modifiers: .command)
                     Button("Delete", systemImage: "trash") { confirmDelete = true }
@@ -104,10 +108,35 @@ struct PhotoViewer: View {
         } message: {
             Text("It's removed from this folder, and Synctrain will remove it from your other devices too. This can't be undone in SyncDarkroom.")
         }
-        .alert("Couldn't Delete", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
+        .overlay {
+            if rotating { ProgressView().controlSize(.large).tint(.white) }
+        }
+        .alert("Couldn't Complete", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
             Button("OK") {}
         } message: {
             Text(deleteError ?? "")
+        }
+    }
+
+    private func rotateCurrent() {
+        guard let item = current else { return }
+        rotating = true
+        let url = item.url
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) { try PhotoRotation.rotateClockwise(url) }.value
+                // Pick up the new file date so this page and the thumbnails reload.
+                if let i = items.firstIndex(of: item),
+                   let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+                    items[i] = LibraryItem(url: item.url, name: item.name, isFolder: false, type: item.type,
+                                           modified: item.isEditedCopy ? item.modified.addingTimeInterval(0.001) : date,
+                                           fileSize: item.fileSize, hasEdits: item.hasEdits)
+                }
+                reloadToken = UUID()
+            } catch {
+                deleteError = error.localizedDescription
+            }
+            rotating = false
         }
     }
 

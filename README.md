@@ -1,14 +1,19 @@
 # SyncDarkroom
 
 An iPad photo editor that works directly on a folder kept in sync by
-[Synctrain](https://synctrain.app) (Syncthing). Originals are never modified: every edit is
-saved as a new `_edit` copy next to the original, and its adjustable settings are stored in
-`.syncdarkroom/` inside the folder, so they sync to your other devices too.
+[Synctrain](https://synctrain.app) (Syncthing). Editing never touches the original: every edit is
+saved as a new `_edit` copy next to it, and its adjustable settings are stored in
+`.syncdarkroom/` inside the folder, so they sync to your other devices too. Only three actions
+change or remove existing files, each on request: Delete, Rotate 90° (rewrites just the
+orientation tag) and Replace Original (asks for confirmation first).
 
-**Features:** folder library with live refresh · light, color, detail · tone curves · HSL color
-mixer · presets (built-in + your own, synced) · copy/paste settings · before/after compare ·
-crop, rotate, straighten, perspective · RAW develop (white balance, tone, noise, lens correction) ·
-brush/linear/radial masks · heal/clone · Apple Pencil markup, text and shapes · batch edits.
+**Features:** folder library with live refresh, drag-select and a month/year scrubber · world map
+of your photos with zoomable groups and a heat map · folder statistics · finder for screenshots,
+photos of screens, documents, duplicates and blurry shots · light, color, detail · tone curves ·
+HSL color mixer · presets (built-in + your own, synced) · copy/paste settings · before/after
+compare · crop (with pinch and twist), rotate, straighten, perspective · lossless 90° rotation ·
+RAW develop (white balance, tone, noise, lens correction) · brush/linear/radial masks ·
+heal/clone · Apple Pencil markup, text and shapes · batch edits · replace the original with an edit.
 
 Requires iPadOS 17 or later.
 

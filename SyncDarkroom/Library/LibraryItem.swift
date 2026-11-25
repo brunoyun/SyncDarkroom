@@ -58,7 +58,13 @@ enum FolderScanner {
             includingPropertiesForKeys: keys,
             options: [.skipsHiddenFiles] // also skips Syncthing's .stfolder/.stversions and our .syncdarkroom
         )
-        let edited = SidecarStore.editedSourceNames(in: folder)
+        let copySources = SidecarStore.copySources(in: folder)
+        let edited = Set(copySources.values)
+        var dates: [String: Date] = [:]
+        for url in urls {
+            dates[url.lastPathComponent] = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+        }
         return urls.compactMap { url in
             let values = try? url.resourceValues(forKeys: Set(keys))
             let isFolder = (values?.isDirectory ?? false) && !(values?.isPackage ?? false)
@@ -69,7 +75,9 @@ enum FolderScanner {
                 name: url.lastPathComponent,
                 isFolder: isFolder,
                 type: type,
-                modified: values?.contentModificationDate ?? .distantPast,
+                // Edited copies take their original's date, so they sit next to it in the grid.
+                modified: copySources[url.lastPathComponent].flatMap { dates[$0] }
+                    ?? values?.contentModificationDate ?? .distantPast,
                 fileSize: Int64(values?.fileSize ?? 0),
                 hasEdits: edited.contains(url.lastPathComponent)
             )

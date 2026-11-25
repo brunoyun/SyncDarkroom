@@ -149,7 +149,7 @@ struct MetadataPanel: View {
                 ProgressView().frame(maxWidth: .infinity)
             }
         }
-        .task(id: item.url) {
+        .task(id: item) {
             metadata = nil
             let url = item.url
             metadata = await Task.detached(priority: .utility) { PhotoMetadata.read(from: url) }.value

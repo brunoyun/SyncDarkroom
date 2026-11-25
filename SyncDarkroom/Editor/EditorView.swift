@@ -11,6 +11,9 @@ struct EditorView: View {
     @AppStorage("exportQuality") private var exportQuality: Double = 0.9
     @State private var confirmDiscard = false
     @State private var saveError: String?
+    @State private var confirmReplace = false
+    /// Crop and straighten when a two-finger gesture began.
+    @State private var pinchStart: (crop: CropRect, straighten: Double)?
 
     init(item: LibraryItem, onSaved: @escaping () -> Void = {}) {
         self.onSaved = onSaved
@@ -48,6 +51,13 @@ struct EditorView: View {
         .confirmationDialog("Discard your changes?", isPresented: $confirmDiscard, titleVisibility: .visible) {
             Button("Discard Changes", role: .destructive) { dismiss() }
             Button("Keep Editing", role: .cancel) {}
+        }
+        .confirmationDialog("Replace the original with this edit?", isPresented: $confirmReplace,
+                            titleVisibility: .visible) {
+            Button("Replace Original", role: .destructive) { replaceOriginal() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(replaceMessage)
         }
         .alert("Couldn't Save", isPresented: Binding(get: { saveError != nil }, set: { if !$0 { saveError = nil } })) {
             Button("OK") {}
@@ -113,6 +123,24 @@ struct EditorView: View {
                         )
                     }
                 }
+                // Two fingers: spread to zoom in (tighter crop), twist to straighten.
+                .simultaneousGesture(
+                    MagnifyGesture().simultaneously(with: RotateGesture())
+                        .onChanged { value in
+                            if pinchStart == nil {
+                                model.checkpoint()
+                                pinchStart = (model.recipe.geometry.crop ?? .full, model.recipe.geometry.straighten)
+                            }
+                            guard let start = pinchStart else { return }
+                            if let magnification = value.first?.magnification {
+                                model.recipe.geometry.crop = zoomedCrop(start.crop, by: magnification)
+                            }
+                            if let rotation = value.second?.rotation {
+                                model.recipe.geometry.straighten = min(45, max(-45, start.straighten + rotation.degrees))
+                            }
+                        }
+                        .onEnded { _ in pinchStart = nil }
+                )
         } else if [.masks, .heal, .markup].contains(model.panel) {
             let size = fitted(after.size, in: area)
             Image(uiImage: after)
@@ -149,6 +177,19 @@ struct EditorView: View {
                 })
                 .accessibilityHint("Touch and hold to show the photo before your adjustments")
         }
+    }
+
+    /// The crop scaled about its center by 1/magnification, kept inside the photo.
+    private func zoomedCrop(_ start: CropRect, by magnification: CGFloat) -> CropRect {
+        let minSide = 0.08
+        var scale = 1 / max(0.05, Double(magnification))
+        scale = min(scale, 1 / start.width, 1 / start.height)               // can't exceed the photo
+        scale = max(scale, minSide / min(start.width, start.height))       // don't vanish
+        let w = start.width * scale, h = start.height * scale
+        let cx = start.x + start.width / 2, cy = start.y + start.height / 2
+        let x = min(max(0, cx - w / 2), 1 - w)
+        let y = min(max(0, cy - h / 2), 1 - h)
+        return CropRect(x: x, y: y, width: w, height: h)
     }
 
     private func capsule(_ text: Text) -> some View {
@@ -197,6 +238,11 @@ struct EditorView: View {
                     .disabled(!model.hasCopiedSettings)
                     .keyboardShortcut("v", modifiers: [.command, .shift])
                 Divider()
+                Button("Replace Original…", systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard",
+                       role: .destructive) {
+                    confirmReplace = true
+                }
+                .disabled(!model.isLoaded || model.isSaving || model.recipe.isIdentity)
                 Button("Reset All Edits", systemImage: "arrow.counterclockwise", role: .destructive) {
                     model.resetAll()
                 }
@@ -215,6 +261,11 @@ struct EditorView: View {
                     }
                     Divider()
                 }
+                Button("Replace Original…", systemImage: "arrow.triangle.2.circlepath.doc.on.clipboard",
+                       role: .destructive) {
+                    confirmReplace = true
+                }
+                Divider()
                 Picker("Format", selection: $exportFormat) {
                     ForEach(ExportFormat.allCases) { Text($0.title).tag($0) }
                 }
@@ -230,6 +281,32 @@ struct EditorView: View {
             }
             .disabled(!model.isLoaded || model.isSaving || !model.isDirty)
             .keyboardShortcut("s", modifiers: .command)
+        }
+    }
+
+    private var replaceMessage: String {
+        var text = "\(model.sourceURL.lastPathComponent) is deleted and replaced by the edited photo"
+        if RawDecoder.isRaw(model.sourceURL) || model.sourceURL.pathExtension.lowercased() != exportFormat.fileExtension {
+            text += " (saved as \(exportFormat.title))"
+        }
+        text += ". The unedited original can't be recovered, and Synctrain removes it from your other devices too."
+        if let copy = model.editingCopy { text += " \(copy.lastPathComponent) is deleted as well." }
+        let others = model.otherCopiesCount()
+        if others > 0 {
+            text += " \(others) other edited cop\(others == 1 ? "y stays" : "ies stay") but can no longer be re-edited."
+        }
+        return text
+    }
+
+    private func replaceOriginal() {
+        Task {
+            do {
+                try await model.replaceOriginal(format: exportFormat, quality: exportQuality)
+                onSaved()
+                dismiss()
+            } catch {
+                saveError = error.localizedDescription
+            }
         }
     }
 

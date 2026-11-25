@@ -721,6 +721,23 @@ final class EditorModel {
 
     // MARK: Saving
 
+    /// Number of other edited copies made from this original (they lose their recipes on replace).
+    func otherCopiesCount() -> Int {
+        let folder = sourceURL.deletingLastPathComponent()
+        return SidecarStore.copySources(in: folder)
+            .filter { $0.value == sourceURL.lastPathComponent && folder.appendingPathComponent($0.key) != editingCopy }
+            .count
+    }
+
+    func replaceOriginal(format: ExportFormat, quality: Double) async throws {
+        isSaving = true
+        defer { isSaving = false }
+        let job = ReplaceOriginalJob(source: sourceURL, recipe: recipe, format: format, quality: quality,
+                                     editingCopy: editingCopy)
+        _ = try await Task.detached(priority: .userInitiated) { try job.run() }.value
+        savedRecipe = recipe
+    }
+
     /// Saves the edit. A new edit (or `asNewCopy`) writes a new file and leaves every
     /// existing copy alone; otherwise the copy being edited is updated in place.
     func save(format: ExportFormat, quality: Double, asNewCopy: Bool = false) async throws {

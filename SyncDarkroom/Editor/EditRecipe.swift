@@ -173,6 +173,8 @@ struct EditRecipe: Codable, Equatable, Sendable {
     /// Annotations on the final framed picture.
     var markup: Markup?
     var geometry = Geometry()
+    /// Clockwise quarter turns applied to the finished picture (the viewer's rotate button).
+    var outputTurns: Int?
 
     init() {}
 
@@ -184,6 +186,7 @@ struct EditRecipe: Codable, Equatable, Sendable {
         heals = try c.decodeIfPresent([HealSpot].self, forKey: .heals)
         masks = try c.decodeIfPresent([MaskLayer].self, forKey: .masks)
         markup = try c.decodeIfPresent(Markup.self, forKey: .markup)
+        outputTurns = try c.decodeIfPresent(Int.self, forKey: .outputTurns)
         geometry = try c.decodeIfPresent(Geometry.self, forKey: .geometry) ?? Geometry()
     }
 
@@ -199,6 +202,7 @@ struct EditRecipe: Codable, Equatable, Sendable {
     var geometryOnly: EditRecipe {
         var r = EditRecipe()
         r.geometry = geometry
+        r.outputTurns = outputTurns
         return r
     }
 

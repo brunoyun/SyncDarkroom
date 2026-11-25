@@ -21,6 +21,8 @@ struct LibraryView: View {
     @State private var autoScrollTask: Task<Void, Never>?
     @State private var pendingDelete: [LibraryItem]?
     @State private var isDeleting = false
+    @State private var showStats = false
+    @State private var showCleanup = false
 
     private let gridSpacing: CGFloat = 4
 
@@ -207,6 +209,16 @@ struct LibraryView: View {
             EditorView(item: item) { Task { await model.load() } }
         }
         .folderPicker(isPresented: $showPicker)
+        .sheet(isPresented: $showStats) {
+            FolderStatsView(folderURL: folderURL, title: navigationTitle)
+        }
+        .sheet(isPresented: $showCleanup, onDismiss: { Task { await model.load() } }) {
+            CleanupView(folderURL: folderURL, title: navigationTitle)
+        }
+    }
+
+    private var navigationTitle: String {
+        isRoot ? folderStore.displayName : folderURL.lastPathComponent
     }
 
     @ViewBuilder
@@ -310,17 +322,20 @@ struct LibraryView: View {
                       : "line.3.horizontal.decrease.circle.fill")
             }
 
-            if isRoot {
-                Menu {
+            Menu {
+                Button("Statistics", systemImage: "chart.bar.xaxis") { showStats = true }
+                Button("Find Photos to Delete…", systemImage: "sparkle.magnifyingglass") { showCleanup = true }
+                if isRoot {
+                    Divider()
                     Button("Choose Another Folder…", systemImage: "folder.badge.gearshape") {
                         showPicker = true
                     }
                     Button("Forget Folder", systemImage: "xmark.circle", role: .destructive) {
                         folderStore.forget()
                     }
-                } label: {
-                    Label("Folder", systemImage: "folder")
                 }
+            } label: {
+                Label("Folder", systemImage: "folder")
             }
         }
     }
