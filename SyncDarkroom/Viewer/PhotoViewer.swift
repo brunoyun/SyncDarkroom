@@ -15,20 +15,24 @@ struct PhotoViewer: View {
     @State private var editing: LibraryItem?
     @State private var reloadToken = UUID()
     @State private var comparing = false
+    @State private var items: [LibraryItem]
+    @State private var confirmDelete = false
+    @State private var deleteError: String?
     @AppStorage("viewerShowsInfo") private var showsInfo = false
 
     init(context: ViewerContext) {
         self.context = context
         _selection = State(initialValue: context.startURL)
+        _items = State(initialValue: context.items)
     }
 
     private var current: LibraryItem? {
-        context.items.first { $0.url == selection }
+        items.first { $0.url == selection }
     }
 
     private var positionText: String {
-        guard let index = context.items.firstIndex(where: { $0.url == selection }) else { return "" }
-        return "\(index + 1) of \(context.items.count)"
+        guard let index = items.firstIndex(where: { $0.url == selection }) else { return "" }
+        return "\(index + 1) of \(items.count)"
     }
 
     var body: some View {
@@ -39,7 +43,7 @@ struct PhotoViewer: View {
                     CopyComparePage(item: current, reloadToken: reloadToken)
                 } else {
                     TabView(selection: $selection) {
-                        ForEach(context.items) { item in
+                        ForEach(items) { item in
                             PhotoPage(item: item, reloadToken: reloadToken)
                                 .tag(item.url)
                         }
@@ -72,6 +76,9 @@ struct PhotoViewer: View {
                     }
                     Button("Edit", systemImage: "slider.horizontal.3") { editing = current }
                         .keyboardShortcut("e", modifiers: .command)
+                    Button("Delete", systemImage: "trash") { confirmDelete = true }
+                        .disabled(current == nil)
+                        .keyboardShortcut(.delete, modifiers: .command)
                     Button("Info", systemImage: showsInfo ? "info.circle.fill" : "info.circle") {
                         showsInfo.toggle()
                     }
@@ -90,6 +97,37 @@ struct PhotoViewer: View {
             EditorView(item: item) { reloadToken = UUID() }
         }
         .onChange(of: selection) { comparing = false }
+        .confirmationDialog("Delete \(current?.name ?? "this photo")?", isPresented: $confirmDelete,
+                            titleVisibility: .visible) {
+            Button("Delete Photo", role: .destructive) { deleteCurrent() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("It's removed from this folder, and Synctrain will remove it from your other devices too. This can't be undone in SyncDarkroom.")
+        }
+        .alert("Couldn't Delete", isPresented: Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })) {
+            Button("OK") {}
+        } message: {
+            Text(deleteError ?? "")
+        }
+    }
+
+    private func deleteCurrent() {
+        guard let item = current, let index = items.firstIndex(of: item) else { return }
+        let url = item.url
+        Task {
+            let failures = await Task.detached(priority: .userInitiated) { PhotoDeletion.delete([url]) }.value
+            if let failure = failures.first {
+                deleteError = failure.message
+                return
+            }
+            items.remove(at: index)
+            if items.isEmpty {
+                dismiss()
+            } else {
+                // Show the next photo (or the previous one if this was the last).
+                selection = items[min(index, items.count - 1)].url
+            }
+        }
     }
 }
 

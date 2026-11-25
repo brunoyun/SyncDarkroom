@@ -10,18 +10,33 @@ struct LibraryView: View {
     @State private var viewer: ViewerContext?
     @State private var editing: LibraryItem?
     @State private var showPicker = false
-    @State private var isPasting = false
     @State private var libraryError: String?
     @State private var selecting = false
     @State private var selection: Set<URL> = []
     @State private var batch: BatchContext?
+    @State private var metrics = ScrollMetrics()
+    @State private var dragSelect: DragSelectState?
+    @State private var dragSelectStarts = 0
+    @State private var tapBlockedUntil = Date.distantPast
+    @State private var autoScrollTask: Task<Void, Never>?
+    @State private var pendingDelete: [LibraryItem]?
+    @State private var isDeleting = false
+
+    private let gridSpacing: CGFloat = 4
+
+    /// Long-press-and-drag selection in progress.
+    private struct DragSelectState {
+        var anchor: Int
+        var adding: Bool
+        var base: Set<URL>
+        var gridX: CGFloat
+        var viewportY: CGFloat
+    }
 
     @AppStorage("sortOrder") private var sortOrder: SortOrder = .dateNewest
     @AppStorage("typeFilter") private var typeFilter: TypeFilter = .all
     @AppStorage("hideEditedCopies") private var hideEditedCopies = false
     @AppStorage("thumbnailSize") private var thumbnailSize: Double = 180
-    @AppStorage("exportFormat") private var exportFormat: ExportFormat = .jpeg
-    @AppStorage("exportQuality") private var exportQuality: Double = 0.9
 
     init(folderURL: URL, isRoot: Bool = false) {
         self.folderURL = folderURL
@@ -46,6 +61,7 @@ struct LibraryView: View {
         let folders = folders
         let photos = photos
 
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if !folders.isEmpty {
@@ -60,9 +76,12 @@ struct LibraryView: View {
                 }
 
                 if !photos.isEmpty {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: thumbnailSize), spacing: 4)], spacing: 4) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: thumbnailSize), spacing: gridSpacing)],
+                              spacing: gridSpacing) {
                         ForEach(photos) { photo in
                             Button {
+                                // The release of a long press must not also count as a tap.
+                                guard dragSelect == nil, Date() > tapBlockedUntil else { return }
                                 if selecting {
                                     if selection.contains(photo.url) { selection.remove(photo.url) } else { selection.insert(photo.url) }
                                 } else {
@@ -81,22 +100,21 @@ struct LibraryView: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityAddTraits(selecting && selection.contains(photo.url) ? .isSelected : [])
-                            .contextMenu {
-                                Button("Edit", systemImage: "slider.horizontal.3") { editing = photo }
-                                Button("View", systemImage: "eye") {
-                                    viewer = ViewerContext(items: photos, startURL: photo.url)
-                                }
-                                Divider()
-                                if photo.isEditedCopy {
-                                    Button("Copy Edit Settings", systemImage: "doc.on.doc") { copySettings(from: photo) }
-                                }
-                                if SettingsClipboard.look != nil {
-                                    Button("Paste Settings as New Copy", systemImage: "doc.on.clipboard") {
-                                        pasteSettings(onto: photo)
-                                    }
-                                }
-                            }
+                            .accessibilityHint(selecting ? "Toggles selection" : "Opens the photo. Touch and hold to select.")
+                            .id(photo.url)
                         }
+                    }
+                    .coordinateSpace(name: "photoGrid")
+                    .background {
+                        LongPressDragProbe(
+                            onBegan: { dragSelect(at: $0, photos: photos, proxy: proxy) },
+                            onChanged: { dragSelect(at: $0, photos: photos, proxy: proxy) },
+                            onEnded: { endDragSelect() }
+                        )
+                    }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("viewport")) } action: { frame in
+                        metrics.gridMinY = frame.minY
+                        metrics.gridWidth = frame.width
                     }
                     Text(summary(photos: photos))
                         .font(.footnote)
@@ -106,13 +124,32 @@ struct LibraryView: View {
                 }
             }
             .padding()
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("viewport")) } action: { frame in
+                metrics.contentMinY = frame.minY
+                metrics.contentHeight = frame.height
+            }
         }
+        .coordinateSpace(name: "viewport")
+        .scrollIndicators(.hidden)
+        .onGeometryChange(for: EdgeInsets.self) { $0.safeAreaInsets } action: { insets in
+            metrics.topInset = insets.top
+            metrics.bottomInset = insets.bottom
+        }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { metrics.viewportHeight = $0 }
+        .safeAreaInset(edge: .trailing, spacing: 0) {
+            // A column of its own (not an overlay) so its drags aren't taken by the scroll view.
+            FastScrubber(metrics: metrics, photos: photos, sortOrder: sortOrder) { index in
+                proxy.scrollTo(photos[index].url, anchor: .top)
+            }
+        }
+        }
+        .sensoryFeedback(.selection, trigger: dragSelectStarts)
         .overlay { emptyState(folders: folders, photos: photos) }
         .overlay {
-            if isPasting {
+            if isDeleting {
                 VStack(spacing: 12) {
                     ProgressView()
-                    Text("Saving new copy…").font(.callout)
+                    Text("Deleting…").font(.callout)
                 }
                 .padding(24)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
@@ -135,6 +172,16 @@ struct LibraryView: View {
             }
         }
         .onChange(of: selecting) { if !selecting { selection.removeAll() } }
+        .confirmationDialog(deleteTitle, isPresented: Binding(get: { pendingDelete != nil },
+                                                              set: { if !$0 { pendingDelete = nil } }),
+                            titleVisibility: .visible) {
+            Button(deleteTitle, role: .destructive) {
+                if let items = pendingDelete { delete(items) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The files are removed from this folder, and Synctrain will remove them from your other devices too. This can't be undone in SyncDarkroom.")
+        }
         .refreshable { await model.load() }
         .navigationTitle(isRoot ? folderStore.displayName : folderURL.lastPathComponent)
         .toolbar { toolbarContent }
@@ -185,13 +232,25 @@ struct LibraryView: View {
         }
     }
 
+    private var deleteTitle: String {
+        let n = pendingDelete?.count ?? 0
+        return n == 1 ? "Delete 1 Photo" : "Delete \(n) Photos"
+    }
+
     private func selectionBar(photos: [LibraryItem]) -> some View {
         let chosen = photos.filter { selection.contains($0.url) }
-        return HStack(spacing: 16) {
+        let single = chosen.count == 1 ? chosen.first : nil
+        return HStack(spacing: 14) {
             Text(chosen.isEmpty ? "Select photos" : "\(chosen.count) selected")
                 .font(.headline)
                 .monospacedDigit()
             Spacer()
+            if let single {
+                Button("Edit", systemImage: "slider.horizontal.3") { editing = single }
+                if single.isEditedCopy {
+                    Button("Copy Settings", systemImage: "doc.on.doc") { copySettings(from: single) }
+                }
+            }
             Button("Paste Settings", systemImage: "doc.on.clipboard") {
                 batch = BatchContext(items: chosen, initialChoice: .copied)
             }
@@ -201,6 +260,10 @@ struct LibraryView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(chosen.isEmpty)
+            Button("Delete", systemImage: "trash", role: .destructive) { pendingDelete = chosen }
+                .labelStyle(.iconOnly)
+                .disabled(chosen.isEmpty)
+                .accessibilityLabel("Delete selected photos")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
@@ -262,32 +325,117 @@ struct LibraryView: View {
         }
     }
 
+    // MARK: Drag selection
+
+    private func endDragSelect() {
+        autoScrollTask?.cancel()
+        autoScrollTask = nil
+        if dragSelect != nil { tapBlockedUntil = Date().addingTimeInterval(0.4) }
+        dragSelect = nil
+    }
+
+    /// Columns and row pitch of the adaptive photo grid (rows are square).
+    private func gridLayout() -> (columns: Int, pitch: CGFloat) {
+        let width = max(1, metrics.gridWidth)
+        let columns = max(1, Int((width + gridSpacing) / (CGFloat(thumbnailSize) + gridSpacing)))
+        let cell = (width - CGFloat(columns - 1) * gridSpacing) / CGFloat(columns)
+        return (columns, cell + gridSpacing)
+    }
+
+    private func photoIndex(at point: CGPoint, count: Int) -> Int {
+        let (columns, pitch) = gridLayout()
+        let column = min(columns - 1, max(0, Int(point.x / pitch)))
+        let row = max(0, Int(floor(point.y / pitch)))
+        return min(count - 1, max(0, row * columns + column))
+    }
+
+    private func dragSelect(at location: CGPoint, photos: [LibraryItem], proxy: ScrollViewProxy) {
+        guard !photos.isEmpty else { return }
+        let index = photoIndex(at: location, count: photos.count)
+        if dragSelect == nil {
+            if !selecting { selecting = true }
+            let adding = !selection.contains(photos[index].url)
+            dragSelect = DragSelectState(anchor: index, adding: adding, base: selection,
+                                         gridX: location.x, viewportY: location.y + metrics.gridMinY)
+            dragSelectStarts += 1
+        }
+        dragSelect?.gridX = location.x
+        dragSelect?.viewportY = location.y + metrics.gridMinY
+        applyDragSelection(to: index, photos: photos)
+        updateAutoScroll(photos: photos, proxy: proxy)
+    }
+
+    /// Selects (or deselects) everything between the first photo and the one under the finger.
+    private func applyDragSelection(to index: Int, photos: [LibraryItem]) {
+        guard let state = dragSelect else { return }
+        let range = min(state.anchor, index)...max(state.anchor, index)
+        let urls = photos[range].map(\.url)
+        selection = state.adding ? state.base.union(urls) : state.base.subtracting(urls)
+    }
+
+    private func autoScrollDirection() -> Int {
+        guard let y = dragSelect?.viewportY else { return 0 }
+        if y > metrics.viewportHeight - metrics.bottomInset - 70 { return 1 }
+        if y < metrics.topInset + 70 { return -1 }
+        return 0
+    }
+
+    /// Scrolls while the finger rests near the top or bottom edge, extending the selection.
+    private func updateAutoScroll(photos: [LibraryItem], proxy: ScrollViewProxy) {
+        guard autoScrollDirection() != 0 else {
+            autoScrollTask?.cancel()
+            autoScrollTask = nil
+            return
+        }
+        guard autoScrollTask == nil else { return }
+        autoScrollTask = Task { @MainActor in
+            while !Task.isCancelled, dragSelect != nil {
+                let direction = autoScrollDirection()
+                if direction == 0 { break }
+                let (columns, pitch) = gridLayout()
+                if direction > 0 {
+                    let bottomRow = Int((metrics.viewportHeight - metrics.bottomInset - metrics.gridMinY) / pitch)
+                    let target = min(photos.count - 1, (bottomRow + 1) * columns)
+                    withAnimation(.linear(duration: 0.12)) { proxy.scrollTo(photos[target].url, anchor: .bottom) }
+                } else {
+                    let topRow = Int((metrics.topInset - metrics.gridMinY) / pitch)
+                    let target = max(0, (topRow - 1) * columns)
+                    withAnimation(.linear(duration: 0.12)) { proxy.scrollTo(photos[target].url, anchor: .top) }
+                }
+                try? await Task.sleep(for: .milliseconds(130))
+                // The content moved under a resting finger: re-pick the photo beneath it.
+                if let state = dragSelect {
+                    let point = CGPoint(x: state.gridX, y: state.viewportY - metrics.gridMinY)
+                    applyDragSelection(to: photoIndex(at: point, count: photos.count), photos: photos)
+                }
+            }
+            autoScrollTask = nil
+        }
+    }
+
+    // MARK: Actions
+
+    private func delete(_ items: [LibraryItem]) {
+        isDeleting = true
+        let urls = items.map(\.url)
+        Task {
+            let failures = await Task.detached(priority: .userInitiated) { PhotoDeletion.delete(urls) }.value
+            isDeleting = false
+            selection.subtract(urls)
+            if selection.isEmpty { selecting = false }
+            await model.load()
+            if !failures.isEmpty {
+                libraryError = "Couldn't delete " + failures.map { "\($0.name) (\($0.message))" }.joined(separator: ", ")
+            }
+        }
+    }
+
     private func copySettings(from copy: LibraryItem) {
         guard let sidecar = SidecarStore.load(forCopy: copy.url) else {
             libraryError = "\(copy.name) wasn't made by SyncDarkroom, so it has no settings to copy."
             return
         }
         SettingsClipboard.look = sidecar.recipe.look
-    }
-
-    /// Applies the copied look (not the crop) to the photo's original and saves a new copy.
-    private func pasteSettings(onto item: LibraryItem) {
-        guard let look = SettingsClipboard.look, !isPasting else { return }
-        isPasting = true
-        let format = exportFormat, quality = exportQuality
-        Task {
-            defer { isPasting = false }
-            do {
-                try await Task.detached(priority: .userInitiated) {
-                    let plan = BatchEdit.plan(for: item, look: look)
-                    _ = try ExportJob(source: plan.source, recipe: plan.recipe, format: format,
-                                      quality: quality, updating: nil).run()
-                }.value
-                await model.load()
-            } catch {
-                libraryError = error.localizedDescription
-            }
-        }
     }
 
     private func summary(photos: [LibraryItem]) -> String {
