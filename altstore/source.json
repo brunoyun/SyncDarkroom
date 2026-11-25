@@ -12,6 +12,15 @@
       "bundleIdentifier": "com.syncdarkroom.app",
       "versions": [
         {
+          "version": "0.2.0",
+          "buildVersion": "3",
+          "date": "2026-11-25T20:59:13Z",
+          "localizedDescription": "Faster library navigation and cleanup\n\n- Long-press a photo and drag to select a range (auto-scrolls at the edges)\n- Delete photos from the library or the viewer\n- Fast-scroll column showing the month and year while you drag",
+          "downloadURL": "https://github.com/brunoyun/SyncDarkroom/releases/download/v0.2.0/SyncDarkroom.ipa",
+          "size": 1730601,
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "0.1.1",
           "buildVersion": "2",
           "date": "2026-11-25T17:23:22Z",
