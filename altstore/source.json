@@ -1,0 +1,38 @@
+{
+  "name": "SyncDarkroom",
+  "identifier": "io.github.brunoyun.syncdarkroom",
+  "subtitle": "Edit photos right in your synced folder.",
+  "description": "SyncDarkroom is an iPad photo editor that works directly on a folder kept in sync (for example with Synctrain/Syncthing). Edits are saved as copies next to the originals, with adjustable settings that sync too.",
+  "iconURL": "https://raw.githubusercontent.com/brunoyun/SyncDarkroom/main/altstore/icon.png",
+  "website": "https://github.com/brunoyun/SyncDarkroom",
+  "tintColor": "#FF9933",
+  "news": [],
+  "apps": [
+    {
+      "bundleIdentifier": "com.syncdarkroom.app",
+      "versions": [
+        {
+          "version": "0.1.1",
+          "buildVersion": "2",
+          "date": "2026-11-25T17:23:22Z",
+          "localizedDescription": "Fix Xcode 26 build; improve release build logs\n\n- CurveEditor: compute the nearest-point distance as CGFloat explicitly.\n  Xcode 26's Swift won't implicitly convert Double to CGFloat inside a\n  tuple, which broke the release build on GitHub's macos-26 runner.\n- build_ipa.sh: keep the full xcodebuild log in build/xcodebuild.log and\n  print errors with context on failure.\n- Release workflow: actions/checkout@v5 (Node 24) and upload the build\n  log as an artifact when the build fails.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+          "downloadURL": "https://github.com/brunoyun/SyncDarkroom/releases/download/v0.1.1/SyncDarkroom.ipa",
+          "size": 1659256,
+          "minOSVersion": "17.0"
+        }
+      ],
+      "name": "SyncDarkroom",
+      "developerName": "brunoyun",
+      "subtitle": "Photo editor for synced folders",
+      "localizedDescription": "Browse a Synctrain/Syncthing folder and edit photos non-destructively: light, color, curves, HSL, presets, RAW develop, crop and perspective, masks, healing, Apple Pencil markup and batch edits. Originals are never modified — every edit is a new copy, and its settings sync with the folder.",
+      "iconURL": "https://raw.githubusercontent.com/brunoyun/SyncDarkroom/main/altstore/icon.png",
+      "tintColor": "#FF9933",
+      "category": "photo-video",
+      "screenshots": [],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": {}
+      }
+    }
+  ]
+}
