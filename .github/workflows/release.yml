@@ -70,7 +70,13 @@ jobs:
           TAG: ${{ steps.v.outputs.tag }}
           VERSION: ${{ steps.v.outputs.version }}
         run: |
-          NOTES="$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null | sed '/^-----BEGIN PGP SIGNATURE-----/,$d')"
+          # actions/checkout can replace an annotated tag with a lightweight one; refetch the real tag.
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
+          if [[ "$(git cat-file -t "$TAG" 2>/dev/null)" == "tag" ]]; then
+            NOTES="$(git tag -l --format='%(contents)' "$TAG" | sed '/^-----BEGIN PGP SIGNATURE-----/,$d')"
+          else
+            NOTES=""
+          fi
           [[ -z "${NOTES//[[:space:]]/}" ]] && NOTES="SyncDarkroom $VERSION"
           printf '%s\n' "$NOTES" > build/notes.md
           cat build/notes.md
