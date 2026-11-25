@@ -19,6 +19,7 @@ EXTRA=()
 [[ -n "$BUILD" ]] && EXTRA+=("CURRENT_PROJECT_VERSION=$BUILD")
 
 rm -rf build/ipa build/SyncDarkroom.ipa
+mkdir -p build
 xcodebuild \
   -project SyncDarkroom.xcodeproj \
   -scheme SyncDarkroom \
@@ -29,7 +30,14 @@ xcodebuild \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGN_IDENTITY="" \
   ${EXTRA[@]+"${EXTRA[@]}"} \
-  build | (command -v xcpretty >/dev/null && xcpretty || grep -E "error:|warning: .*\.swift|BUILD (SUCCEEDED|FAILED)")
+  build > build/xcodebuild.log 2>&1 || {
+    echo "xcodebuild failed. Errors (full log: build/xcodebuild.log):"
+    grep -E -B2 -A6 "error:" build/xcodebuild.log | head -200 || true
+    echo "----- last 40 lines -----"
+    tail -40 build/xcodebuild.log
+    exit 65
+  }
+grep -E "warning: .*\.swift" build/xcodebuild.log | sort -u | head -20 || true
 
 APP="build/release/Build/Products/Release-iphoneos/SyncDarkroom.app"
 [[ -d "$APP" ]] || { echo "Build failed: $APP not found"; exit 1; }

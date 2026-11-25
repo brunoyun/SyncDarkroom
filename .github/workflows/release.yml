@@ -28,7 +28,7 @@ jobs:
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -56,6 +56,14 @@ jobs:
 
       - name: Build unsigned IPA
         run: scripts/build_ipa.sh "${{ steps.v.outputs.version }}" "${{ steps.v.outputs.build }}"
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: xcodebuild-log
+          path: build/xcodebuild.log
+          if-no-files-found: ignore
 
       - name: Release notes
         env:

@@ -270,7 +270,10 @@ struct CurveEditor: View {
     private func nearestIndex(to location: CGPoint, in size: CGSize, within radius: CGFloat = 28) -> Int? {
         var best: (Int, CGFloat)?
         for (i, p) in curve.points.enumerated() {
-            let d = hypot(p.x * size.width - location.x, (1 - p.y) * size.height - location.y)
+            // Explicit CGFloat: older Swift won't convert Double→CGFloat inside a tuple.
+            let dx: CGFloat = CGFloat(p.x) * size.width - location.x
+            let dy: CGFloat = CGFloat(1 - p.y) * size.height - location.y
+            let d: CGFloat = hypot(dx, dy)
             if d < radius, d < (best?.1 ?? .infinity) { best = (i, d) }
         }
         return best?.0
