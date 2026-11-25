@@ -1,0 +1,110 @@
+# Builds an unsigned IPA, publishes it as a GitHub release, and adds it to the
+# AltStore source (altstore/source.json on the default branch).
+#
+# Release a new version:   git tag -a v0.2.0 -m "What's new…" && git push origin v0.2.0
+# (the tag message becomes the release notes shown in AltStore)
+# Or run it manually from the Actions tab with a version number.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, e.g. 0.2.0 (creates tag v0.2.0 on this commit)"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-26
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: v
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          if ! [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){1,2}$ ]]; then
+            echo "::error::Version must look like 1.2 or 1.2.3 (got '$VERSION')"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      - name: Show Xcode
+        run: xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Build unsigned IPA
+        run: scripts/build_ipa.sh "${{ steps.v.outputs.version }}" "${{ steps.v.outputs.build }}"
+
+      - name: Release notes
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          NOTES="$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null | sed '/^-----BEGIN PGP SIGNATURE-----/,$d')"
+          [[ -z "${NOTES//[[:space:]]/}" ]] && NOTES="SyncDarkroom $VERSION"
+          printf '%s\n' "$NOTES" > build/notes.md
+          cat build/notes.md
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" build/SyncDarkroom.ipa --clobber
+          else
+            gh release create "$TAG" build/SyncDarkroom.ipa \
+              --target "$GITHUB_SHA" \
+              --title "SyncDarkroom $VERSION" \
+              --notes-file build/notes.md
+          fi
+
+      - name: Update AltStore source
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+          BUILD: ${{ steps.v.outputs.build }}
+        run: |
+          # The source lives on the default branch (the tag may point at an older commit).
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+          python3 scripts/update_source.py \
+            --version "$VERSION" --build "$BUILD" \
+            --ipa build/SyncDarkroom.ipa \
+            --repo "$GITHUB_REPOSITORY" --branch "$DEFAULT_BRANCH" \
+            --notes-file build/notes.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add altstore/source.json
+          if git diff --cached --quiet; then
+            echo "Source unchanged."
+            exit 0
+          fi
+          git commit -m "AltStore source: SyncDarkroom $VERSION ($BUILD)"
+          for attempt in 1 2 3; do
+            git push origin "$DEFAULT_BRANCH" && exit 0
+            git pull --rebase origin "$DEFAULT_BRANCH"
+          done
+          exit 1
