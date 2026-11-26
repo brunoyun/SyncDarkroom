@@ -12,6 +12,15 @@
       "bundleIdentifier": "com.syncdarkroom.app",
       "versions": [
         {
+          "version": "0.4.0",
+          "buildVersion": "5",
+          "date": "2026-11-26T10:40:44Z",
+          "localizedDescription": "Search, people, Immich-style map, cleanup cache and sharing\n\n- Search tab: describe a photo (on-device CLIP), or search by metadata, objects and people, with filters\n- People: faces grouped automatically; name, merge, hide and correct them\n- Map: real heat map like Immich, groups always on land, date filters, photos in view; GPS 0,0 hidden\n- Find Photos to Delete: remembers its analysis, Ignore option per category, no more jumping list\n- Share photos to Mail, Messages, WhatsApp, Messenger and more",
+          "downloadURL": "https://github.com/brunoyun/SyncDarkroom/releases/download/v0.4.0/SyncDarkroom.ipa",
+          "size": 119754958,
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "0.3.0",
           "buildVersion": "4",
           "date": "2026-11-25T22:00:07Z",
