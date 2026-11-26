@@ -41,6 +41,14 @@ struct LibraryItem: Identifiable, Hashable, Sendable {
     let fileSize: Int64
     /// The original has an edit recipe in `.syncdarkroom/`.
     var hasEdits = false
+    /// The file's own modification date. `modified` is the date used for sorting, which for
+    /// edited copies is their original's, so it doesn't change when the copy itself changes.
+    var fileDate: Date?
+
+    /// Changes whenever the file's content does (used to refresh thumbnails).
+    var contentKey: String {
+        "\((fileDate ?? modified).timeIntervalSince1970)|\(fileSize)"
+    }
 
     var id: URL { url }
 
@@ -79,7 +87,8 @@ enum FolderScanner {
                 modified: copySources[url.lastPathComponent].flatMap { dates[$0] }
                     ?? values?.contentModificationDate ?? .distantPast,
                 fileSize: Int64(values?.fileSize ?? 0),
-                hasEdits: edited.contains(url.lastPathComponent)
+                hasEdits: edited.contains(url.lastPathComponent),
+                fileDate: values?.contentModificationDate
             )
         }
     }

@@ -1,6 +1,11 @@
 import Foundation
 import Observation
 
+extension Notification.Name {
+    /// Posted (object: the folder URL) when the app changed a photo file in place.
+    static let photoFilesChanged = Notification.Name("SyncDarkroomPhotoFilesChanged")
+}
+
 @MainActor
 @Observable
 final class FolderModel {
@@ -12,6 +17,7 @@ final class FolderModel {
 
     @ObservationIgnored private var watcher: DirectoryWatcher?
     @ObservationIgnored private var reloadTask: Task<Void, Never>?
+    @ObservationIgnored private var observer: NSObjectProtocol?
 
     init(url: URL) {
         self.url = url
@@ -39,12 +45,20 @@ final class FolderModel {
         watcher = DirectoryWatcher(url: url) { [weak self] in
             self?.scheduleReload()
         }
+        // Changes inside a file (like a rotation) don't touch the folder, so the watcher misses them.
+        let folder = url.standardizedFileURL
+        observer = NotificationCenter.default.addObserver(forName: .photoFilesChanged, object: nil, queue: .main) { [weak self] note in
+            guard (note.object as? URL)?.standardizedFileURL == folder else { return }
+            MainActor.assumeIsolated { self?.scheduleReload() }
+        }
     }
 
     func stopWatching() {
         watcher?.cancel()
         watcher = nil
         reloadTask?.cancel()
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        observer = nil
     }
 
     func scheduleReload() {

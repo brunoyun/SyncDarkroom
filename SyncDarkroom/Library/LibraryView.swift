@@ -508,7 +508,7 @@ struct ThumbnailCell: View {
             .overlay(alignment: .bottomLeading) { badges }
             .contentShape(Rectangle())
             .accessibilityLabel(item.name)
-            .task(id: "\(item.id)|\(pixelSize)|\(item.modified)") {
+            .task(id: "\(item.id)|\(pixelSize)|\(item.contentKey)") {
                 let loaded = await ThumbnailLoader.shared.image(for: item, maxPixelSize: pixelSize)
                 if Task.isCancelled { return }
                 image = loaded

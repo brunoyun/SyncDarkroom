@@ -127,12 +127,18 @@ struct PhotoViewer: View {
             do {
                 try await Task.detached(priority: .userInitiated) { try PhotoRotation.rotateClockwise(url) }.value
                 // Pick up the new file date so this page and the thumbnails reload.
+                var fresh = URL(fileURLWithPath: url.path)
+                fresh.removeAllCachedResourceValues()
                 if let i = items.firstIndex(of: item),
-                   let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {
+                   let values = try? fresh.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
+                   let date = values.contentModificationDate {
                     items[i] = LibraryItem(url: item.url, name: item.name, isFolder: false, type: item.type,
-                                           modified: item.isEditedCopy ? item.modified.addingTimeInterval(0.001) : date,
-                                           fileSize: item.fileSize, hasEdits: item.hasEdits)
+                                           modified: item.isEditedCopy ? item.modified : date,
+                                           fileSize: Int64(values.fileSize ?? Int(item.fileSize)), hasEdits: item.hasEdits,
+                                           fileDate: date)
                 }
+                // The library grid behind the viewer reloads too, so its thumbnail turns as well.
+                NotificationCenter.default.post(name: .photoFilesChanged, object: url.deletingLastPathComponent())
                 reloadToken = UUID()
             } catch {
                 deleteError = error.localizedDescription

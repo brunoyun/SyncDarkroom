@@ -67,7 +67,7 @@ final class ThumbnailLoader: @unchecked Sendable {
     }
 
     func image(for item: LibraryItem, maxPixelSize: Int) async -> UIImage? {
-        let key = "\(item.url.path)|\(maxPixelSize)|\(item.modified.timeIntervalSince1970)" as NSString
+        let key = "\(item.url.path)|\(maxPixelSize)|\(item.contentKey)" as NSString
         if let cached = cache.object(forKey: key) { return cached }
 
         await limiter.acquire()
