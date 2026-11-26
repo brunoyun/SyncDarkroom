@@ -12,6 +12,15 @@
       "bundleIdentifier": "com.syncdarkroom.app",
       "versions": [
         {
+          "version": "0.4.1",
+          "buildVersion": "6",
+          "date": "2026-11-26T10:45:41Z",
+          "localizedDescription": "Fix: rotated photos now update their thumbnail right away",
+          "downloadURL": "https://github.com/brunoyun/SyncDarkroom/releases/download/v0.4.1/SyncDarkroom.ipa",
+          "size": 119761264,
+          "minOSVersion": "17.0"
+        },
+        {
           "version": "0.4.0",
           "buildVersion": "5",
           "date": "2026-11-26T10:40:44Z",
