@@ -12,6 +12,7 @@ VERSION="${1:-}"
 BUILD="${2:-}"
 
 command -v xcodegen >/dev/null || { echo "xcodegen is required (brew install xcodegen)"; exit 1; }
+scripts/fetch_models.sh
 xcodegen generate --quiet
 
 EXTRA=()

@@ -80,6 +80,7 @@ struct PhotoViewer: View {
                         .keyboardShortcut("r", modifiers: .command)
                     Button("Edit", systemImage: "slider.horizontal.3") { editing = current }
                         .keyboardShortcut("e", modifiers: .command)
+                    ShareButton(urls: current.map { [$0.url] } ?? [], iconOnly: true)
                     Button("Delete", systemImage: "trash") { confirmDelete = true }
                         .disabled(current == nil)
                         .keyboardShortcut(.delete, modifiers: .command)

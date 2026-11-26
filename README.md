@@ -7,9 +7,12 @@ saved as a new `_edit` copy next to it, and its adjustable settings are stored i
 change or remove existing files, each on request: Delete, Rotate 90° (rewrites just the
 orientation tag) and Replace Original (asks for confirmation first).
 
-**Features:** folder library with live refresh, drag-select and a month/year scrubber · world map
-of your photos with zoomable groups and a heat map · folder statistics · finder for screenshots,
-photos of screens, documents, duplicates and blurry shots · light, color, detail · tone curves ·
+**Features:** folder library with live refresh, drag-select and a month/year scrubber · share
+photos to Mail, Messages, WhatsApp and other apps · world map of your photos with zoomable groups, a
+density heat map and date filters · search by description (CLIP), metadata, objects and people,
+with face naming and merging · folder statistics · finder for screenshots, photos of screens,
+documents, duplicates and blurry shots (results cached, photos can be ignored) · light, color,
+detail · tone curves ·
 HSL color mixer · presets (built-in + your own, synced) · copy/paste settings · before/after
 compare · crop (with pinch and twist), rotate, straighten, perspective · lossless 90° rotation ·
 RAW develop (white balance, tone, noise, lens correction) · brush/linear/radial masks ·
@@ -60,7 +63,7 @@ brew install xcodegen
 ```
 
 ```bash
-xcodegen generate && open SyncDarkroom.xcodeproj
+scripts/fetch_models.sh && xcodegen generate && open SyncDarkroom.xcodeproj
 ```
 
 To build the same unsigned IPA the workflow produces (output: `build/SyncDarkroom.ipa`):
@@ -69,8 +72,9 @@ To build the same unsigned IPA the workflow produces (output: `build/SyncDarkroo
 scripts/build_ipa.sh 0.1.0 1
 ```
 
-Debug builds accept `-debugRootPath <folder>` and `-debugEditFile <name>` launch arguments
-for simulator testing without the folder picker.
+Debug builds accept `-debugRootPath <folder>`, `-debugEditFile <name>` and `-debugTab
+library|map|search` launch arguments for simulator testing without the folder picker. Apple
+Vision doesn't run in the simulator, so object and face results only appear on a device.
 
 ## How files are stored
 
@@ -79,5 +83,22 @@ for simulator testing without the folder picker.
 | `IMG_1234_edit.jpg`, `IMG_1234-2_edit.jpg` | Edited copies (one per edit; never overwritten by a new edit) |
 | `.syncdarkroom/<copy name>.json` | The recipe for that copy: settings, crop, masks, heals, markup |
 | `.syncdarkroom/presets/*.json` | Your presets |
+| `.syncdarkroom/cleanup-ignored.json` | Photos ignored in "Find Photos to Delete" |
+
+Search analysis (objects, faces, CLIP embeddings), people names and place names are kept on the
+iPad only (Application Support), not in the synced folder.
+
+## On-device models
+
+Search runs entirely on the iPad:
+
+- **Smart search:** Apple's [MobileCLIP-S0](https://huggingface.co/apple/coreml-mobileclip)
+  (Apple Sample Code License) with OpenAI's CLIP tokenizer (MIT). `scripts/fetch_models.sh`
+  downloads them into `Models/` at a pinned revision and checks their SHA-256; they're bundled
+  into the app but not kept in git.
+- **Face recognition:** OpenCV Zoo's [SFace](https://github.com/opencv/opencv_zoo/tree/main/models/face_recognition_sface)
+  (Apache-2.0), converted to Core ML by `scripts/convert_sface.py`
+  (`SyncDarkroom/Resources/ML/sface.mlpackage`). Faces are found and aligned with Apple Vision.
+- **Objects, screens, documents, blur and near-duplicates:** Apple Vision.
 
 See [SPEC.md](SPEC.md) for the design.

@@ -15,6 +15,9 @@ targets:
     platform: iOS
     sources:
       - SyncDarkroom
+      # Smart-search model, downloaded by scripts/fetch_models.sh (not in git).
+      - path: Models
+        optional: true
     info:
       path: SyncDarkroom/Support/Info.plist
       properties:
@@ -37,3 +40,4 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
+        COREML_CODEGEN_LANGUAGE: None

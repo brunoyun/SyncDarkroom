@@ -28,7 +28,11 @@ struct IndexedPhoto: Codable, Hashable, Sendable, Identifiable {
     var folder: String { (path as NSString).deletingLastPathComponent }
     var type: ImageType? { ImageType(fileExtension: (path as NSString).pathExtension) }
     var date: Date { dateTaken ?? modified }
-    var hasLocation: Bool { latitude != nil && longitude != nil }
+    /// A usable GPS position (cameras without a fix often write 0, 0).
+    var hasLocation: Bool {
+        guard let latitude, let longitude else { return false }
+        return GeoCoordinate.isValid(latitude: latitude, longitude: longitude)
+    }
     var pixelCount: Int { (width ?? 0) * (height ?? 0) }
     var camera: String? {
         guard let model else { return make }
@@ -43,6 +47,14 @@ struct IndexedPhoto: Codable, Hashable, Sendable, Identifiable {
     func libraryItem(root: URL) -> LibraryItem {
         LibraryItem(url: url(root: root), name: name, isFolder: false, type: type,
                     modified: modified, fileSize: size, hasEdits: hasEdits)
+    }
+}
+
+enum GeoCoordinate {
+    static func isValid(latitude: Double, longitude: Double) -> Bool {
+        guard latitude.isFinite, longitude.isFinite, abs(latitude) <= 90, abs(longitude) <= 180 else { return false }
+        // "Null Island": an empty GPS record, not a photo taken in the Gulf of Guinea.
+        return !(abs(latitude) < 0.0001 && abs(longitude) < 0.0001)
     }
 }
 

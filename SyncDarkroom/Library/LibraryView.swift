@@ -272,6 +272,7 @@ struct LibraryView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(chosen.isEmpty)
+            ShareButton(urls: chosen.map(\.url), iconOnly: true)
             Button("Delete", systemImage: "trash", role: .destructive) { pendingDelete = chosen }
                 .labelStyle(.iconOnly)
                 .disabled(chosen.isEmpty)
